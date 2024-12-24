@@ -4,7 +4,8 @@ using UnityEngine;
 using UnityEngine.Events;
 using NaughtyAttributes;
 
-namespace Autohand {
+namespace Autohand 
+{
     [DefaultExecutionOrder(2)]
     [HelpURL("https://app.gitbook.com/s/5zKO0EvOjzUDeT2aiFk3/auto-hand/grabbable/distance-grabbing")]
     public class HandDistanceGrabber : MonoBehaviour {
@@ -20,6 +21,7 @@ namespace Autohand {
         public float forwardSmoothingSpeed = 5f;
         public LineRenderer line;
         public Material[] lineMat;
+        
         [Space]
         public float maxRange = 5;
         [Tooltip("Defaults to grabbable on start if none")]
@@ -68,8 +70,7 @@ namespace Autohand {
         public UnityHandGrabEvent StartSelect;
         [ShowIf("showEvents")]
         public UnityHandGrabEvent StopSelect;
-
-
+        
         List<CatchAssistData> catchAssisted;
 
         DistanceGrabbable targetingDistanceGrabbable;
@@ -90,10 +91,19 @@ namespace Autohand {
         Coroutine catchAssistRoutine;
         private DistanceGrabbable catchAsistGrabbable;
         private CatchAssistData catchAssistData;
-
+        private GameObject attachedObject;
+        private Vector3 initialObjectOffset; // 손과 객체 간 초기 간격
+        private bool isGripping = false; 
+        private float lastGripTime = 0f; // Grip 동작의 마지막 활성화 시간
+        private float gripReleaseDelay = 0.3f; // Grip 상태 해제를 지연시키는 시간 (초 단위)
+        
         Vector3 currentSmoothForward;
 
-        GameObject hitPoint {
+        private bool isPointerBlue = false; // 포인터가 하늘색 상태인지 추적
+        private GameObject selectedObject;
+        private Quaternion initialRotationOffset;
+        GameObject hitPoint 
+        {
             get {
                 if(!gameObject.activeInHierarchy)
                     return null;
@@ -139,11 +149,12 @@ namespace Autohand {
                 catchAsistGrabbable.OnPullCanceled -= (hand, grabbable) => { if(catchAssisted.Contains(catchAssistData)) catchAssisted.Remove(catchAssistData); };
             }
         }
-
+        
         void Update() 
         {
             CheckDistanceGrabbable();
-            
+            CheckPointerState();
+
             if(lastInstantPull != useInstantPull) 
             {
                 if(useInstantPull) {
@@ -154,6 +165,12 @@ namespace Autohand {
             }
         }
 
+        private void FixedUpdate()
+        {
+            UpdateObjectPosition();
+        }
+
+        
         private void OnDestroy() {
             Destroy(hitPoint);
         }
@@ -197,12 +214,11 @@ namespace Autohand {
                     if (hit.transform.gameObject.layer == 10) 
                     {
                         if (line != null) 
-                            {
-                                var material= line.material;
-                                material = lineMat[0]; // 하늘색
-                                line.material = material;
-                                Debug.Log("하늘색 변경 완료");
-                            }
+                        {
+                            var material= line.material;
+                            material = lineMat[0];
+                            line.material = material;
+                        }
                     }
      
                     if(hit.transform.CanGetComponent(out hitGrabbable)) 
@@ -228,15 +244,12 @@ namespace Autohand {
                 }
                 else 
                 {
-                    Debug.Log($"Hit 객체가 10번 레이어가 아님");
                     if (line != null) 
                     {
                         var material= line.material;
                         material = lineMat[1]; // 빨간색
                         line.material = material;
-                        Debug.Log("빨간색 변경 완료");
-                    } 
-                    
+                    }
                     StopTargeting();
                 }
 
@@ -264,9 +277,115 @@ namespace Autohand {
             }
         }
 
+        void CheckPointerState()
+        {
+            bool didHit = Physics.SphereCast(forwardPointer.position, 0.03f, forwardPointer.forward, out RaycastHit hit, maxRange, layers);
 
+            if (didHit && hit.transform.gameObject.layer == 10)
+            {
+                isPointerBlue = true;
+                selectedObject = hit.collider.gameObject;
+                if (line != null)
+                {
+                    line.material = lineMat[0];
+                }
+            }
+            else
+            {
+                isPointerBlue = false;
+                selectedObject = null;
+                if (line != null)
+                {
+                    line.material = lineMat[1];
+                }
+            }
 
+            if (isGripping)
+            {
+                isPointerBlue = true; // Grip 상태 유지
+            }
+        }
+        public void OnGripStart()
+        {
+            if (isPointerBlue && selectedObject != null && !isGripping)
+            {
+                isGripping = true;
+                lastGripTime = Time.time; // Grip 시작 시간 기록
+                initialObjectOffset = selectedObject.transform.position - primaryHand.transform.position;
+                initialRotationOffset = Quaternion.Inverse(primaryHand.transform.rotation) * selectedObject.transform.rotation;
+                AttachObject(selectedObject);
+                Debug.Log($"Grip 시작: {selectedObject.name}");
+            }
+        }
+        private void AttachObject(GameObject obj)
+        {
+            if (attachedObject != null || obj == null)
+                return;
 
+            attachedObject = obj;
+            var rigidbody = attachedObject.GetComponent<Rigidbody>();
+            if (rigidbody != null)
+            {
+                rigidbody.isKinematic = true; // 물리 효과 비활성화
+                rigidbody.useGravity = false; // 중력 비활성화
+                rigidbody.linearVelocity = Vector3.zero; // 기존 속도 초기화
+                rigidbody.angularVelocity = Vector3.zero; // 기존 회전 속도 초기화
+            }
+
+            Debug.Log($"객체 {obj.name}가 Grip 상태에서 포인터에 붙었습니다.");
+        }
+        public void OnGripStop()
+        {
+            if (!isGripping)
+                return;
+
+            // Grip 해제 조건 확인
+            if (Time.time - lastGripTime >= gripReleaseDelay)
+            {
+                isGripping = false;
+                DetachObject();
+                Debug.Log("Grip 해제");
+            }
+            else
+            {
+                Debug.Log($"Grip 해제 대기 중: {Time.time - lastGripTime:F2}초 경과");
+            }
+        }
+
+        private void DetachObject()
+        {
+            if (attachedObject == null)
+                return;
+
+            var rigidbody = attachedObject.GetComponent<Rigidbody>();
+            if (rigidbody != null)
+            {
+                rigidbody.isKinematic = false; // 물리 효과 활성화
+                rigidbody.useGravity = true; // 중력 활성화
+            }
+            attachedObject.transform.SetParent(null);
+            attachedObject = null;
+            Debug.Log("Grip 상태 해제, 객체가 포인터에서 분리되었습니다.");
+        }
+        
+        private void UpdateObjectPosition()
+        {
+            if (isGripping && attachedObject != null)
+            {
+                // 객체 위치 및 회전 동기화
+                attachedObject.transform.position = Vector3.Lerp(
+                    attachedObject.transform.position, 
+                    primaryHand.transform.position + initialObjectOffset, 
+                    Time.fixedDeltaTime * 10f // 부드럽게 이동
+                );
+                attachedObject.transform.rotation = Quaternion.Slerp(
+                    attachedObject.transform.rotation, 
+                    primaryHand.transform.rotation * initialRotationOffset, 
+                    Time.fixedDeltaTime * 10f // 부드럽게 회전
+                );
+            }
+        }
+        
         public virtual void StartPointing() {
             pointing = true;
             currentSmoothForward = forwardPointer.forward;
@@ -282,8 +401,7 @@ namespace Autohand {
             StopPoint?.Invoke(primaryHand);
             StopTargeting();
         }
-
-
+        
 
         public virtual void StartTargeting(DistanceGrabbable target) 
         {
@@ -493,7 +611,7 @@ namespace Autohand {
                 Gizmos.DrawWireSphere(primaryHand.palmTransform.position + primaryHand.palmTransform.forward * catchAssistRadius * 4 / 5f + primaryHand.palmTransform.up * catchAssistRadius * 1 / 4f, catchAssistRadius);
         }
     }
-
+    
     struct CatchAssistData {
         public Grabbable grab;
         public float estimatedRadius;

@@ -179,30 +179,37 @@ namespace Autohand {
             }
         }
 
-        protected virtual void OnGestureStart(Hand hand, ref HandPoseGestureData gestureData) {
-            if(!gestureData.currentPoseState) {
+        protected virtual void OnGestureStart(Hand hand, ref HandPoseGestureData gestureData) 
+        {
+            if (!gestureData.currentPoseState) 
+            {
                 gestureData.currentPoseState = true;
                 gestureData.gestureStartTime = Time.time;
             }
-            if((Time.time - gestureData.gestureStartTime < requiredPoseHoldActivationTime))
+
+            if ((Time.time - gestureData.gestureStartTime) < requiredPoseHoldActivationTime)
                 return;
 
-            if(!gestureData.currentActivatedPoseState) { 
+            if (!gestureData.currentActivatedPoseState) 
+            {
                 gestureData.currentActivatedPoseState = true;
                 OnGestureStartEvent.Invoke(hand, gestureData);
             }
         }
 
-        protected virtual void OnGestureStop(Hand hand, ref HandPoseGestureData gestureData) {
-            if(gestureData.currentPoseState) {
+        protected virtual void OnGestureStop(Hand hand, ref HandPoseGestureData gestureData) 
+        {
+            if (gestureData.currentPoseState) 
+            {
                 gestureData.currentPoseState = false;
                 gestureData.gestureStopTime = Time.time;
             }
 
-            if(Time.time - gestureData.gestureStopTime < requiredPoseStopActivationTime)
+            if ((Time.time - gestureData.gestureStopTime) < requiredPoseStopActivationTime)
                 return;
 
-            if(gestureData.currentActivatedPoseState) {
+            if (gestureData.currentActivatedPoseState && gestureData.currentPoseDifference > minimumPoseDistance) 
+            {
                 gestureData.currentActivatedPoseState = false;
                 OnGestureStopEvent.Invoke(hand, gestureData);
             }
