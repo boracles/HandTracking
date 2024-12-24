@@ -19,6 +19,7 @@ namespace Autohand {
         public bool useSmoothing = true;
         public float forwardSmoothingSpeed = 5f;
         public LineRenderer line;
+        public Material[] lineMat;
         [Space]
         public float maxRange = 5;
         [Tooltip("Defaults to grabbable on start if none")]
@@ -107,7 +108,8 @@ namespace Autohand {
             }
         }
 
-        void Start() {
+        void Start() 
+        {
             catchAssisted = new List<CatchAssistData>();
             if(layers == 0)
                 layers = LayerMask.GetMask(Hand.grabbableLayerNameDefault);
@@ -138,9 +140,12 @@ namespace Autohand {
             }
         }
 
-        void Update() {
+        void Update() 
+        {
             CheckDistanceGrabbable();
-            if(lastInstantPull != useInstantPull) {
+            
+            if(lastInstantPull != useInstantPull) 
+            {
                 if(useInstantPull) {
                     useFlickPull = false;
                     pullGrabDistance = 0;
@@ -169,9 +174,10 @@ namespace Autohand {
         }
 
 
-        void CheckDistanceGrabbable() {
-
-            if(useSmoothing) {
+        void CheckDistanceGrabbable() 
+        {
+            if(useSmoothing) 
+            {
                 var currentAngleDistance = Vector3.Angle(currentSmoothForward, forwardPointer.forward);
                 currentSmoothForward = Vector3.RotateTowards(currentSmoothForward, forwardPointer.forward, Time.deltaTime * forwardSmoothingSpeed + Time.deltaTime * forwardSmoothingSpeed * currentAngleDistance, 1000f);
                 currentSmoothForward.Normalize();
@@ -179,19 +185,35 @@ namespace Autohand {
             else
                 currentSmoothForward = forwardPointer.forward;
 
-            if(!pulling && pointing && primaryHand.holdingObj == null) {
-
+            if(!pulling && pointing && primaryHand.holdingObj == null) 
+            {
                 bool didHit = Physics.SphereCast(forwardPointer.position, 0.03f, currentSmoothForward, out hit, maxRange, layers);
+                
                 DistanceGrabbable hitGrabbable;
                 GrabbableChild hitGrabbableChild;
-                if(didHit) {
-                    if(hit.transform.CanGetComponent(out hitGrabbable)) {
+                
+                if(didHit) 
+                {
+                    if (hit.transform.gameObject.layer == 10) 
+                    {
+                        if (line != null) 
+                            {
+                                var material= line.material;
+                                material = lineMat[0]; // 하늘색
+                                line.material = material;
+                                Debug.Log("하늘색 변경 완료");
+                            }
+                    }
+     
+                    if(hit.transform.CanGetComponent(out hitGrabbable)) 
+                    {
                         if(targetingDistanceGrabbable == null || hitGrabbable.GetInstanceID() != targetingDistanceGrabbable.GetInstanceID())
                         {
                             StartTargeting(hitGrabbable);
                         }
                     }
-                    else if(hit.transform.CanGetComponent(out hitGrabbableChild)) {
+                    else if(hit.transform.CanGetComponent(out hitGrabbableChild)) 
+                    {
                         if(hitGrabbableChild.grabParent.transform.CanGetComponent(out hitGrabbable)) {
                             if(targetingDistanceGrabbable == null || hitGrabbable.GetInstanceID() != targetingDistanceGrabbable.GetInstanceID())
                             {
@@ -204,7 +226,17 @@ namespace Autohand {
                         StopTargeting();
                     }
                 }
-                else {
+                else 
+                {
+                    Debug.Log($"Hit 객체가 10번 레이어가 아님");
+                    if (line != null) 
+                    {
+                        var material= line.material;
+                        material = lineMat[1]; // 빨간색
+                        line.material = material;
+                        Debug.Log("빨간색 변경 완료");
+                    } 
+                    
                     StopTargeting();
                 }
 
@@ -253,7 +285,8 @@ namespace Autohand {
 
 
 
-        public virtual void StartTargeting(DistanceGrabbable target) {
+        public virtual void StartTargeting(DistanceGrabbable target) 
+        {
             if(target.enabled && primaryHand.CanGrab(target.grabbable)) {
                 if(targetingDistanceGrabbable != null)
                     StopTargeting();
