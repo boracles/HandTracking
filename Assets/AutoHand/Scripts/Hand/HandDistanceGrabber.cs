@@ -96,6 +96,8 @@ namespace Autohand
         private bool isGripping = false; 
         private float lastGripTime = 0f; // Grip 동작의 마지막 활성화 시간
         private float gripReleaseDelay = 0.3f; // Grip 상태 해제를 지연시키는 시간 (초 단위)
+        private bool isAttached = false; // 물건이 현재 Attach 상태인지 여부
+
         
         Vector3 currentSmoothForward;
 
@@ -307,6 +309,9 @@ namespace Autohand
         }
         public void OnGripStart()
         {
+            if (isAttached) // 이미 물건이 Attach된 상태라면 호출하지 않음
+                return;
+
             if (isPointerBlue && selectedObject != null && !isGripping)
             {
                 isGripping = true;
@@ -314,6 +319,9 @@ namespace Autohand
                 initialObjectOffset = selectedObject.transform.position - primaryHand.transform.position;
                 initialRotationOffset = Quaternion.Inverse(primaryHand.transform.rotation) * selectedObject.transform.rotation;
                 AttachObject(selectedObject);
+
+                // Attach 상태로 전환
+                isAttached = true;
                 Debug.Log($"Grip 시작: {selectedObject.name}");
             }
         }
@@ -329,22 +337,18 @@ namespace Autohand
                 rigidbody.isKinematic = true; // 물리 효과 비활성화
                 rigidbody.useGravity = false; // 중력 비활성화
                 rigidbody.linearVelocity = Vector3.zero; // 기존 속도 초기화
-                rigidbody.angularVelocity = Vector3.zero; // 기존 회전 속도 초기화
+                rigidbody.angularVelocity = Vector3.zero; // 기존 회전 초기화
             }
 
             Debug.Log($"객체 {obj.name}가 Grip 상태에서 포인터에 붙었습니다.");
         }
         public void OnGripStop()
         {
-            if (!isGripping)
-                return;
-
-            // Grip 해제 조건 확인
-            if (Time.time - lastGripTime >= gripReleaseDelay)
+            if (isGripping && Time.time - lastGripTime >= gripReleaseDelay)
             {
                 isGripping = false;
                 DetachObject();
-                Debug.Log("Grip 해제");
+                Debug.Log("Grip 해제: 물건이 포인터에서 분리되었습니다.");
             }
             else
             {
@@ -363,9 +367,13 @@ namespace Autohand
                 rigidbody.isKinematic = false; // 물리 효과 활성화
                 rigidbody.useGravity = true; // 중력 활성화
             }
+
             attachedObject.transform.SetParent(null);
             attachedObject = null;
-            Debug.Log("Grip 상태 해제, 객체가 포인터에서 분리되었습니다.");
+
+            // Attach 상태 초기화
+            isAttached = false;
+            Debug.Log("물건이 포인터에서 분리되었습니다.");
         }
         
         private void UpdateObjectPosition()
@@ -386,10 +394,17 @@ namespace Autohand
             }
         }
         
-        public virtual void StartPointing() {
+        public virtual void StartPointing() 
+        {
             pointing = true;
             currentSmoothForward = forwardPointer.forward;
             StartPoint?.Invoke(primaryHand);
+
+            if (attachedObject != null && !isGripping)
+            {
+                DetachObject();
+                Debug.Log("포인터 활성화, 물건을 놓습니다.");
+            }
         }
 
         public virtual void StopPointing() {
